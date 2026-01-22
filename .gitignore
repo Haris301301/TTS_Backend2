@@ -1,0 +1,18 @@
+# Dependencies (Wajib di-ignore biar gak berat)
+node_modules
+
+# Environment Variables (RAHASIA: Isinya password & API Key)
+.env
+
+# Folder Sampah/Sementara (Hasil generate audio & upload)
+temp/
+uploads/
+
+# Logs (Catatan error server)
+logs
+*.log
+npm-debug.log*
+
+# OS Files (File sampah bawaan Windows/Mac)
+.DS_Store
+Thumbs.db
