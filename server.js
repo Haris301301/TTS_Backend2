@@ -21,6 +21,7 @@ const app = express();
 // ENV Variables
 const PORT = process.env.PORT || 8000;
 const ACCESS_CODE = process.env.ACCESS_CODE || 'asleb2026';
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 // Middleware
 app.use(
@@ -146,8 +147,19 @@ app.post('/api/tts/generate', (req, res) => {
 
     exec(command, (error, stdout, stderr) => {
         if (error || !fs.existsSync(rawTtsPath)) {
-            console.error(`Error TTS: ${error?.message}`);
-            return res.status(500).json({ message: 'Gagal generate suara.' });
+            console.error(`❌ Error TTS Python:`, error?.message);
+            console.error(`❌ stderr:`, stderr);
+            console.error(`❌ stdout:`, stdout);
+
+            // Cleanup file text jika ada error
+            if (fs.existsSync(txtFilePath)) fs.unlinkSync(txtFilePath);
+
+            return res.status(500).json({
+                message:
+                    'Gagal generate suara. Pastikan Python dan edge-tts terinstall di server.',
+                error: error?.message,
+                stderr: stderr,
+            });
         }
 
         ffmpeg()
@@ -165,7 +177,7 @@ app.post('/api/tts/generate', (req, res) => {
                 if (fs.existsSync(rawTtsPath)) fs.unlinkSync(rawTtsPath);
                 if (fs.existsSync(txtFilePath)) fs.unlinkSync(txtFilePath);
 
-                const audioUrl = `http://localhost:${PORT}/temp/${finalFileName}`;
+                const audioUrl = `${BASE_URL}/temp/${finalFileName}`;
                 const newEntry = {
                     id: timestamp,
                     title: title || 'Tanpa Judul',
@@ -182,7 +194,7 @@ app.post('/api/tts/generate', (req, res) => {
 app.post('/api/tts/upload', upload.single('audio'), (req, res) => {
     if (!req.file)
         return res.status(400).json({ message: 'File tidak ditemukan' });
-    const audioUrl = `http://localhost:${PORT}/temp/${req.file.filename}`;
+    const audioUrl = `${BASE_URL}/temp/${req.file.filename}`;
     const newEntry = {
         id: Date.now(),
         title: req.body.title || req.file.originalname,
