@@ -143,7 +143,8 @@ app.post('/api/tts/generate', (req, res) => {
         return res.status(500).json({ message: 'Gagal menulis file text.' });
     }
 
-    const command = `python "${pythonScriptPath}" "${txtFilePath}" "${rawTtsPath}"`;
+    // Gunakan python3 untuk kompatibilitas dengan Docker (Debian-based images)
+    const command = `python3 "${pythonScriptPath}" "${txtFilePath}" "${rawTtsPath}"`;
 
     exec(command, (error, stdout, stderr) => {
         if (error || !fs.existsSync(rawTtsPath)) {
