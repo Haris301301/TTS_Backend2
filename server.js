@@ -48,6 +48,52 @@ let quranScheduleDatabase = [];
 // Folder Temp
 const tempDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+/* ================= SERVER-SIDE AUDIO PLAYER ================= */
+// ✅ Fungsi untuk memutar audio langsung di speaker server (hardware)
+// Menggunakan ffplay dari FFmpeg
+let lastPlayedScheduleKey = ''; // Tracking untuk mencegah duplikasi
+
+function playAudioOnServer(filePath, label = 'Audio') {
+    if (!filePath) {
+        console.log(`⚠️ [${label}] Path audio kosong, skip.`);
+        return;
+    }
+
+    // Jika path adalah URL, konversi ke path lokal
+    let localPath = filePath;
+    if (filePath.startsWith('http')) {
+        // Extract filename dari URL dan cari di folder temp
+        const filename = filePath.split('/').pop();
+        localPath = path.join(tempDir, filename);
+    }
+
+    // Cek apakah file ada
+    if (!fs.existsSync(localPath)) {
+        console.log(`❌ [${label}] File tidak ditemukan: ${localPath}`);
+        return;
+    }
+
+    console.log(`\n🔊 [${label}] Memutar audio: ${localPath}`);
+
+    // Gunakan ffplay untuk memutar audio di speaker server
+    // -nodisp: Tidak tampilkan GUI
+    // -autoexit: Keluar otomatis setelah selesai
+    // -loglevel quiet: Tidak tampilkan log ffplay
+    exec(
+        `ffplay -nodisp -autoexit -loglevel quiet "${localPath}"`,
+        (error, stdout, stderr) => {
+            if (error) {
+                console.error(
+                    `❌ [${label}] Error memutar audio:`,
+                    error.message,
+                );
+            } else {
+                console.log(`✅ [${label}] Audio selesai diputar.`);
+            }
+        },
+    );
+}
 app.use('/temp', express.static(tempDir));
 
 const storage = multer.diskStorage({
@@ -407,6 +453,104 @@ app.get('/api/schedules/check', (req, res) => {
 });
 
 // app.get('/config', (req, res) => res.json({ api_url: `http://localhost:${PORT}`, environment: "development" }));
+
+/* ================= SERVER-SIDE SCHEDULER ================= */
+// ✅ Scheduler yang berjalan setiap 60 detik untuk memutar audio otomatis di speaker server
+// Ini berjalan di sisi SERVER, tidak perlu browser terbuka
+setInterval(() => {
+    // Gunakan timezone Asia/Jakarta (WIB)
+    const now = new Date();
+    const jakartaTime = new Date(
+        now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
+    );
+
+    const currentTime = `${String(jakartaTime.getHours()).padStart(2, '0')}:${String(jakartaTime.getMinutes()).padStart(2, '0')}`;
+    const currentDate = jakartaTime.toLocaleDateString('en-CA'); // Format: YYYY-MM-DD
+
+    // Key untuk tracking duplikasi dalam menit yang sama
+    const minuteKey = `${currentDate}-${currentTime}`;
+
+    // Skip jika sudah diproses dalam menit ini
+    if (lastPlayedScheduleKey === minuteKey) return;
+
+    let hasPlayed = false;
+
+    // ============ CHECK ANNOUNCEMENT SCHEDULES ============
+    scheduleDatabase.forEach((schedule) => {
+        if (!schedule.is_active) return;
+
+        // Cek apakah jadwal cocok (waktu sama DAN tanggal sama atau repeat)
+        const timeMatch = schedule.time === currentTime;
+        const dateMatch =
+            schedule.date === currentDate || schedule.repeat_type !== 'once';
+
+        if (timeMatch && dateMatch) {
+            // Cari announcement terkait
+            const announcement = announcementDatabase.find(
+                (a) => a.id === schedule.announcement_id,
+            );
+
+            if (announcement && announcement.audio_url) {
+                console.log(
+                    `\n📢 [SCHEDULER] Jadwal pengumuman aktif: ${announcement.title}`,
+                );
+
+                // Extract filename dari URL atau gunakan path langsung
+                let audioPath = announcement.audio_url;
+                if (audioPath.startsWith('http')) {
+                    const filename = audioPath.split('/').pop();
+                    audioPath = path.join(tempDir, filename);
+                } else if (!audioPath.startsWith('/')) {
+                    audioPath = path.join(tempDir, audioPath);
+                }
+
+                playAudioOnServer(
+                    audioPath,
+                    `Pengumuman: ${announcement.title}`,
+                );
+                hasPlayed = true;
+            }
+        }
+    });
+
+    // ============ CHECK QURAN SCHEDULES ============
+    quranScheduleDatabase.forEach((schedule) => {
+        // Cek apakah jadwal cocok
+        const timeMatch = schedule.time === currentTime;
+        const dateMatch =
+            schedule.date === currentDate || schedule.repeat_type !== 'once';
+
+        if (timeMatch && dateMatch) {
+            console.log(
+                `\n📖 [SCHEDULER] Jadwal Quran aktif: ${schedule.surah_name || 'Surah ' + schedule.surah_number}`,
+            );
+
+            if (schedule.audio_url) {
+                let audioPath = schedule.audio_url;
+                if (audioPath.startsWith('http')) {
+                    const filename = audioPath.split('/').pop();
+                    audioPath = path.join(tempDir, filename);
+                } else if (!audioPath.startsWith('/')) {
+                    audioPath = path.join(tempDir, audioPath);
+                }
+
+                playAudioOnServer(
+                    audioPath,
+                    `Quran: ${schedule.surah_name || schedule.surah_number}`,
+                );
+                hasPlayed = true;
+            }
+        }
+    });
+
+    // Update tracking key jika ada yang diputar
+    if (hasPlayed) {
+        lastPlayedScheduleKey = minuteKey;
+        console.log(`✅ [SCHEDULER] Audio diputar pada ${currentTime} WIB`);
+    }
+}, 60000); // Jalankan setiap 60 detik
+
+console.log('⏰ Server-side scheduler aktif (interval: 60 detik)');
 
 // Gunakan '0.0.0.0' agar kontainer Docker bisa diakses melalui jaringan
 app.listen(PORT, '0.0.0.0', () => {
