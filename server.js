@@ -349,11 +349,16 @@ app.delete('/api/quran-schedules/:id', (req, res) => {
 /* ================= OPTIMIZED SCHEDULE CHECK ================= */
 // ✅ Single endpoint untuk check jadwal yang harus diputar SEKARANG
 app.get('/api/schedules/check', (req, res) => {
+    // ✅ FIX TIMEZONE: Gunakan Asia/Jakarta (WIB) bukan UTC
     const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    const currentDate = now.toLocaleDateString('en-CA');
+    const jakartaTime = new Date(
+        now.toLocaleString('en-US', { timeZone: 'Asia/Jakarta' }),
+    );
 
-    console.log(`\n⏰ Schedule Check: ${currentDate} ${currentTime}`);
+    const currentTime = `${String(jakartaTime.getHours()).padStart(2, '0')}:${String(jakartaTime.getMinutes()).padStart(2, '0')}`;
+    const currentDate = jakartaTime.toLocaleDateString('en-CA');
+
+    console.log(`\n⏰ Schedule Check (WIB): ${currentDate} ${currentTime}`);
     console.log(
         `   📋 Total schedules: ${scheduleDatabase.length} announcements, ${quranScheduleDatabase.length} quran`,
     );
