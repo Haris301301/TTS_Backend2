@@ -348,19 +348,25 @@ app.delete('/api/quran-schedules/:id', (req, res) => {
 
 /* ================= OPTIMIZED SCHEDULE CHECK ================= */
 // ✅ Single endpoint untuk check jadwal yang harus diputar SEKARANG
-// Mengurangi dari 4-5 request/5detik menjadi 1 request/30detik
 app.get('/api/schedules/check', (req, res) => {
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const currentDate = now.toLocaleDateString('en-CA');
 
+    console.log(`\n⏰ Schedule Check: ${currentDate} ${currentTime}`);
+    console.log(
+        `   📋 Total schedules: ${scheduleDatabase.length} announcements, ${quranScheduleDatabase.length} quran`,
+    );
+
     // Filter jadwal pengumuman yang harus diputar SEKARANG
     const activeAnnSchedules = scheduleDatabase
-        .filter(
-            (s) =>
+        .filter((s) => {
+            const match =
                 s.time === currentTime &&
-                (s.date === currentDate || s.repeat_type !== 'once'),
-        )
+                (s.date === currentDate || s.repeat_type !== 'once');
+            if (match) console.log(`   ✅ Matched announcement schedule:`, s);
+            return match;
+        })
         .map((s) => {
             const ann = announcementDatabase.find(
                 (a) => a.id === s.announcement_id,
@@ -369,16 +375,27 @@ app.get('/api/schedules/check', (req, res) => {
         });
 
     // Filter jadwal quran yang harus diputar SEKARANG
-    const activeQuranSchedules = quranScheduleDatabase.filter(
-        (s) =>
+    const activeQuranSchedules = quranScheduleDatabase.filter((s) => {
+        const match =
             s.time === currentTime &&
-            (s.date === currentDate || s.repeat_type !== 'once'),
+            (s.date === currentDate || s.repeat_type !== 'once');
+        if (match) console.log(`   ✅ Matched quran schedule:`, s);
+        return match;
+    });
+
+    console.log(
+        `   📢 Active: ${activeAnnSchedules.length} announcements, ${activeQuranSchedules.length} quran`,
     );
 
     res.json({
         success: true,
         currentTime,
         currentDate,
+        serverTime: now.toISOString(),
+        totalSchedules: {
+            announcements: scheduleDatabase.length,
+            quran: quranScheduleDatabase.length,
+        },
         announcements: activeAnnSchedules,
         quran: activeQuranSchedules,
     });
