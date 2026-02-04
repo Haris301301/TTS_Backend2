@@ -54,29 +54,35 @@ if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 // Menggunakan ffplay dari FFmpeg
 let lastPlayedScheduleKey = ''; // Tracking untuk mencegah duplikasi
 
-function playAudioOnServer(filePath, label = 'Audio') {
-    if (!filePath) {
-        console.log(`⚠️ [${label}] Path audio kosong, skip.`);
+function playAudioOnServer(audioInput, label = 'Audio') {
+    if (!audioInput) {
+        console.log(`⚠️ [${label}] Path/URL audio kosong, skip.`);
         return;
     }
 
-    // Jika path adalah URL, konversi ke path lokal
-    let localPath = filePath;
-    if (filePath.startsWith('http')) {
-        // Extract filename dari URL dan cari di folder temp
-        const filename = filePath.split('/').pop();
-        localPath = path.join(tempDir, filename);
-    }
+    // Tentukan apakah input adalah URL atau path lokal
+    const isURL = audioInput.startsWith('http');
 
-    // Cek apakah file ada
-    if (!fs.existsSync(localPath)) {
-        console.log(`❌ [${label}] File tidak ditemukan: ${localPath}`);
-        return;
+    // Untuk file lokal, cek apakah ada
+    if (!isURL) {
+        // Jika bukan absolute path, gabungkan dengan tempDir
+        let localPath = audioInput;
+        if (!audioInput.startsWith('/') && !audioInput.includes(':')) {
+            localPath = path.join(tempDir, audioInput);
+        }
+
+        if (!fs.existsSync(localPath)) {
+            console.log(`❌ [${label}] File tidak ditemukan: ${localPath}`);
+            return;
+        }
+        audioInput = localPath;
     }
+    // Untuk URL, ffplay bisa langsung memutar tanpa download
 
     console.log(`\n========================================`);
-    console.log(`� MEMULAI PEMUTARAN AUDIO: ${localPath}`);
+    console.log(`🚀 MEMULAI PEMUTARAN AUDIO: ${audioInput}`);
     console.log(`📢 Label: ${label}`);
+    console.log(`🌐 Tipe: ${isURL ? 'URL (streaming)' : 'File Lokal'}`);
     console.log(
         `⏰ Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`,
     );
@@ -86,7 +92,7 @@ function playAudioOnServer(filePath, label = 'Audio') {
     // -nodisp: Tidak tampilkan GUI
     // -autoexit: Keluar otomatis setelah selesai
     // -loglevel quiet: Tidak tampilkan log ffplay
-    const command = `ffplay -nodisp -autoexit -loglevel quiet "${localPath}"`;
+    const command = `ffplay -nodisp -autoexit -loglevel quiet "${audioInput}"`;
     console.log(`🎵 Menjalankan command: ${command}`);
 
     exec(command, (error, stdout, stderr) => {
@@ -530,16 +536,9 @@ setInterval(() => {
             );
 
             if (schedule.audio_url) {
-                let audioPath = schedule.audio_url;
-                if (audioPath.startsWith('http')) {
-                    const filename = audioPath.split('/').pop();
-                    audioPath = path.join(tempDir, filename);
-                } else if (!audioPath.startsWith('/')) {
-                    audioPath = path.join(tempDir, audioPath);
-                }
-
+                // ✅ PERBAIKAN: Langsung gunakan audio_url (ffplay bisa stream URL)
                 playAudioOnServer(
-                    audioPath,
+                    schedule.audio_url,
                     `Quran: ${schedule.surah_name || schedule.surah_number}`,
                 );
                 hasPlayed = true;
