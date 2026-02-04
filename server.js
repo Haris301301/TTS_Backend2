@@ -74,25 +74,29 @@ function playAudioOnServer(filePath, label = 'Audio') {
         return;
     }
 
-    console.log(`\n🔊 [${label}] Memutar audio: ${localPath}`);
+    console.log(`\n========================================`);
+    console.log(`� MEMULAI PEMUTARAN AUDIO: ${localPath}`);
+    console.log(`📢 Label: ${label}`);
+    console.log(
+        `⏰ Waktu: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}`,
+    );
+    console.log(`========================================\n`);
 
     // Gunakan ffplay untuk memutar audio di speaker server
     // -nodisp: Tidak tampilkan GUI
     // -autoexit: Keluar otomatis setelah selesai
     // -loglevel quiet: Tidak tampilkan log ffplay
-    exec(
-        `ffplay -nodisp -autoexit -loglevel quiet "${localPath}"`,
-        (error, stdout, stderr) => {
-            if (error) {
-                console.error(
-                    `❌ [${label}] Error memutar audio:`,
-                    error.message,
-                );
-            } else {
-                console.log(`✅ [${label}] Audio selesai diputar.`);
-            }
-        },
-    );
+    const command = `ffplay -nodisp -autoexit -loglevel quiet "${localPath}"`;
+    console.log(`🎵 Menjalankan command: ${command}`);
+
+    exec(command, (error, stdout, stderr) => {
+        if (error) {
+            console.error(`❌ [${label}] Error memutar audio:`, error.message);
+            if (stderr) console.error(`   stderr: ${stderr}`);
+        } else {
+            console.log(`✅ [${label}] Audio selesai diputar.`);
+        }
+    });
 }
 app.use('/temp', express.static(tempDir));
 
