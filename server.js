@@ -40,12 +40,58 @@ app.get('/api/config', (req, res) => {
     });
 });
 
-// Database (In-Memory)
-let announcementDatabase = [];
-let scheduleDatabase = [];
-let quranScheduleDatabase = [];
+// Folder Data untuk persistensi JSON
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 
-// Folder Temp
+// Path file JSON untuk persistensi
+const DB_FILES = {
+    announcements: path.join(dataDir, 'announcements.json'),
+    schedules: path.join(dataDir, 'schedules.json'),
+    quranSchedules: path.join(dataDir, 'quran_schedules.json'),
+};
+
+// ✅ Fungsi untuk memuat data dari file JSON
+function loadDatabase(filePath) {
+    try {
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(data);
+        }
+    } catch (error) {
+        console.error(`❌ Error loading ${filePath}:`, error.message);
+    }
+    return [];
+}
+
+// ✅ Fungsi untuk menyimpan data ke file JSON
+function saveDatabase(filePath, data) {
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+        console.log(`💾 Data disimpan ke: ${path.basename(filePath)}`);
+    } catch (error) {
+        console.error(`❌ Error saving ${filePath}:`, error.message);
+    }
+}
+
+// ✅ Fungsi helper untuk save semua database
+function saveAllDatabases() {
+    saveDatabase(DB_FILES.announcements, announcementDatabase);
+    saveDatabase(DB_FILES.schedules, scheduleDatabase);
+    saveDatabase(DB_FILES.quranSchedules, quranScheduleDatabase);
+}
+
+// Database - Muat dari file JSON saat startup
+let announcementDatabase = loadDatabase(DB_FILES.announcements);
+let scheduleDatabase = loadDatabase(DB_FILES.schedules);
+let quranScheduleDatabase = loadDatabase(DB_FILES.quranSchedules);
+
+console.log(`📂 Database dimuat dari file JSON:`);
+console.log(`   - Announcements: ${announcementDatabase.length} item`);
+console.log(`   - Schedules: ${scheduleDatabase.length} item`);
+console.log(`   - Quran Schedules: ${quranScheduleDatabase.length} item`);
+
+// Folder Temp untuk audio files
 const tempDir = path.join(__dirname, 'temp');
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
@@ -256,6 +302,7 @@ app.post('/api/tts/generate', (req, res) => {
                     created_at: new Date().toISOString(),
                 };
                 announcementDatabase.unshift(newEntry);
+                saveDatabase(DB_FILES.announcements, announcementDatabase);
                 res.json({ success: true, audioUrl, data: newEntry });
             })
             .save(finalFilePath);
@@ -272,6 +319,7 @@ app.post('/api/tts/upload', upload.single('audio'), (req, res) => {
         audio_url: audioUrl,
     };
     announcementDatabase.unshift(newEntry);
+    saveDatabase(DB_FILES.announcements, announcementDatabase);
     res.json({ success: true, audioUrl, data: newEntry });
 });
 
@@ -301,6 +349,10 @@ app.delete('/api/announcements/:id', (req, res) => {
             (s) => s.announcement_id !== parseInt(id),
         );
 
+        // Simpan perubahan ke file JSON
+        saveDatabase(DB_FILES.announcements, announcementDatabase);
+        saveDatabase(DB_FILES.schedules, scheduleDatabase);
+
         return res.json({ success: true, message: 'Berhasil dihapus' });
     }
     res.status(404).json({ success: false });
@@ -309,6 +361,7 @@ app.delete('/api/announcements/:id', (req, res) => {
 // 3. POST JADWAL
 app.post('/api/announcement-schedules', (req, res) => {
     scheduleDatabase.push({ ...req.body, id: Date.now(), is_active: true });
+    saveDatabase(DB_FILES.schedules, scheduleDatabase);
     res.json({ success: true });
 });
 
@@ -356,6 +409,7 @@ app.delete('/api/announcement-schedules/:id', (req, res) => {
             }
         }
 
+        saveAllDatabases();
         return res.json({ success: true });
     }
     res.status(404).json({ success: false });
@@ -368,6 +422,7 @@ app.patch('/api/announcement-schedules/:id', (req, res) => {
     );
     if (idx !== -1) {
         scheduleDatabase[idx].date = req.body.date;
+        saveDatabase(DB_FILES.schedules, scheduleDatabase);
         return res.json({ success: true });
     }
     res.status(404).json({ success: false });
@@ -383,6 +438,7 @@ app.post('/api/quran-schedules', (req, res) => {
         id: Date.now(),
         is_active: true,
     });
+    saveDatabase(DB_FILES.quranSchedules, quranScheduleDatabase);
     res.json({ success: true });
 });
 app.patch('/api/quran-schedules/:id', (req, res) => {
@@ -391,6 +447,7 @@ app.patch('/api/quran-schedules/:id', (req, res) => {
     );
     if (idx !== -1) {
         quranScheduleDatabase[idx].date = req.body.date;
+        saveDatabase(DB_FILES.quranSchedules, quranScheduleDatabase);
         return res.json({ success: true });
     }
     res.status(404).json({ success: false });
@@ -399,6 +456,7 @@ app.delete('/api/quran-schedules/:id', (req, res) => {
     quranScheduleDatabase = quranScheduleDatabase.filter(
         (s) => s.id !== parseInt(req.params.id),
     );
+    saveDatabase(DB_FILES.quranSchedules, quranScheduleDatabase);
     res.json({ success: true });
 });
 
