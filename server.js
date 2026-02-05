@@ -99,6 +99,33 @@ if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 // ✅ Fungsi untuk memutar audio langsung di speaker server (hardware)
 // Menggunakan ffplay dari FFmpeg
 let lastPlayedScheduleKey = ''; // Tracking untuk mencegah duplikasi
+let currentAudioProcess = null; // Track proses audio yang sedang berjalan
+
+// ✅ Fungsi untuk menghentikan semua proses ffplay
+async function stopAudioProcess() {
+    return new Promise((resolve) => {
+        console.log('\n🛑 Menghentikan semua proses audio...');
+
+        // Kill semua proses ffplay yang berjalan
+        const killCommand = `ps ax | grep ffplay | grep -v grep | awk '{print $1}' | xargs kill -9 2>/dev/null || true`;
+
+        exec(killCommand, (error, stdout, stderr) => {
+            if (error) {
+                console.log(
+                    '⚠️ Tidak ada proses ffplay yang berjalan atau sudah berhenti',
+                );
+            } else {
+                console.log('✅ Semua proses audio berhasil dihentikan');
+            }
+
+            // Reset tracking
+            currentAudioProcess = null;
+            lastPlayedScheduleKey = '';
+
+            resolve({ success: true, message: 'Audio stopped' });
+        });
+    });
+}
 
 function playAudioOnServer(audioInput, label = 'Audio') {
     if (!audioInput) {
@@ -141,13 +168,17 @@ function playAudioOnServer(audioInput, label = 'Audio') {
     const command = `ffplay -nodisp -autoexit -loglevel quiet "${audioInput}"`;
     console.log(`🎵 Menjalankan command: ${command}`);
 
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
+    // Track proses yang sedang berjalan
+    currentAudioProcess = exec(command, (error, stdout, stderr) => {
+        if (error && error.killed) {
+            console.log(`🛑 [${label}] Audio dihentikan secara manual.`);
+        } else if (error) {
             console.error(`❌ [${label}] Error memutar audio:`, error.message);
             if (stderr) console.error(`   stderr: ${stderr}`);
         } else {
             console.log(`✅ [${label}] Audio selesai diputar.`);
         }
+        currentAudioProcess = null;
     });
 }
 app.use('/temp', express.static(tempDir));
@@ -227,6 +258,26 @@ app.get('/api/auth/me', (req, res) => {
             name: 'Asisten Lab',
             email: 'admin@aslabkom.local',
         },
+    });
+});
+
+/* ================= AUDIO CONTROL ENDPOINTS ================= */
+// ✅ Emergency Stop - Hentikan semua audio yang sedang diputar
+app.post('/api/v1/audio/stop', async (req, res) => {
+    try {
+        const result = await stopAudioProcess();
+        console.log('🛑 Emergency Stop dipanggil dari frontend');
+        res.json({ success: true, message: 'Audio berhasil dihentikan' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ✅ Status audio - Cek apakah ada audio yang sedang diputar
+app.get('/api/v1/audio/status', (req, res) => {
+    res.json({
+        success: true,
+        isPlaying: currentAudioProcess !== null,
     });
 });
 app.post('/api/tts/generate', (req, res) => {
@@ -366,7 +417,7 @@ app.post('/api/announcement-schedules', (req, res) => {
 });
 
 // 4. DELETE JADWAL (UPDATE PENTING DISINI 🔥)
-app.delete('/api/announcement-schedules/:id', (req, res) => {
+app.delete('/api/announcement-schedules/:id', async (req, res) => {
     const scheduleId = parseInt(req.params.id);
     const scheduleIndex = scheduleDatabase.findIndex(
         (s) => s.id === scheduleId,
@@ -375,6 +426,9 @@ app.delete('/api/announcement-schedules/:id', (req, res) => {
     if (scheduleIndex !== -1) {
         const schedule = scheduleDatabase[scheduleIndex];
         const announcementId = schedule.announcement_id;
+
+        // 🛑 STOP AUDIO YANG SEDANG DIPUTAR (jika ada)
+        await stopAudioProcess();
 
         // A. Hapus Jadwalnya dulu dari Database Jadwal
         scheduleDatabase.splice(scheduleIndex, 1);
@@ -452,7 +506,10 @@ app.patch('/api/quran-schedules/:id', (req, res) => {
     }
     res.status(404).json({ success: false });
 });
-app.delete('/api/quran-schedules/:id', (req, res) => {
+app.delete('/api/quran-schedules/:id', async (req, res) => {
+    // 🛑 STOP AUDIO YANG SEDANG DIPUTAR (jika ada)
+    await stopAudioProcess();
+
     quranScheduleDatabase = quranScheduleDatabase.filter(
         (s) => s.id !== parseInt(req.params.id),
     );
